@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: windows
+            arch: amd64
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install fyne-cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+
+      - name: Package
+        run: fyne-cross ${{ matrix.os }} -arch=${{ matrix.arch }} -name git-worktree-manager -release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}
+          path: fyne-cross/dist/${{ matrix.os }}-${{ matrix.arch }}/
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release archives
+        run: |
+          mkdir -p release
+          find artifacts -type f | while read -r f; do
+            base=$(basename "$f")
+            dir=$(dirname "$f" | xargs basename)
+            case "$base" in
+              *.tar.xz|*.zip|*.exe) cp "$f" "release/${dir}-${base}" ;;
+              *) cp -a "$f" "release/${dir}-$(basename "$f")" ;;
+            esac
+          done
+          cd release && zip -r ../git-worktree-manager-packages.zip .
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: git-worktree-manager-packages.zip

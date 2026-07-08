@@ -1,0 +1,4 @@
+git-worktree-manager
+dist/
+fyne-cross/
+*.app

@@ -1,0 +1,16 @@
+Website = "https://github.com/jigarthacker24/git-worktree-manager"
+
+[Details]
+Icon = "Icon.png"
+Name = "Git Worktree Manager"
+ID = "io.github.jigarthacker24.gitworktreemanager"
+Version = "1.0.0"
+Build = 3
+
+[Development]
+HelperText = "Requires git in PATH"
+
+[LinuxAndBSD]
+GenericName = "Git Worktree Manager"
+Categories = ["Development", "Utility"]
+Comment = "Manage git worktrees"
