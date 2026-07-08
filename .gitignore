@@ -1,4 +1,15 @@
+# Binaries
 git-worktree-manager
+*.exe
+
+# Packaged / build output
 dist/
 fyne-cross/
 *.app
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
