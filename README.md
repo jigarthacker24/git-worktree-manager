@@ -27,12 +27,34 @@ Repository: [github.com/jigarthacker24/git-worktree-manager](https://github.com/
 - `git` in your PATH
 - On macOS: Cursor at `/Applications/Cursor.app` or `cursor` in PATH
 
-## Install (after publishing to GitHub)
+## Install
+
+### macOS (build from source via Fyne)
 
 ```bash
 go install fyne.io/tools/cmd/fyne@latest
 fyne install github.com/jigarthacker24/git-worktree-manager@latest
 ```
+
+### Linux (pre-built binary — recommended)
+
+`fyne install` builds from source on Linux and can fail on Ubuntu with a `_FORTIFY_SOURCE` CGO error. Use the pre-built release instead:
+
+```bash
+VERSION=v1.0.0
+ARCH=amd64   # use arm64 on Apple Silicon Linux / aarch64 machines
+
+curl -LO "https://github.com/jigarthacker24/git-worktree-manager/releases/download/${VERSION}/git-worktree-manager-${VERSION}-linux-${ARCH}.tar.xz"
+sudo tar -xJf "git-worktree-manager-${VERSION}-linux-${ARCH}.tar.xz" -C /
+```
+
+Then launch **Git Worktree Manager** from your app menu, or run:
+
+```bash
+git-worktree-manager
+```
+
+See [Releases](https://github.com/jigarthacker24/git-worktree-manager/releases) for all versions and architectures.
 
 ## Run from source
 
@@ -108,7 +130,16 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The workflow in `.github/workflows/release.yml` uploads platform packages to the GitHub release.
+The workflow in `.github/workflows/release.yml` uploads Linux `.tar.xz` packages to the GitHub release.
+
+### Linux install troubleshooting (source builds)
+
+If you build from source with `fyne install` or `go run .`, you may need:
+
+```bash
+sudo apt install gcc libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev
+CGO_CFLAGS="-U_FORTIFY_SOURCE" fyne install github.com/jigarthacker24/git-worktree-manager@latest
+```
 
 ## List on [apps.fyne.io](https://apps.fyne.io)
 

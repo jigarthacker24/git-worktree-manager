@@ -10,62 +10,56 @@ permissions:
   contents: write
 
 jobs:
-  package:
+  package-linux:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - os: linux
-            arch: amd64
-          - os: linux
-            arch: arm64
-          - os: windows
-            arch: amd64
-          - os: darwin
-            arch: amd64
-          - os: darwin
-            arch: arm64
+        arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: go.mod
 
       - name: Install fyne-cross
         run: go install github.com/fyne-io/fyne-cross@latest
 
-      - name: Package
-        run: fyne-cross ${{ matrix.os }} -arch=${{ matrix.arch }} -name git-worktree-manager -release
+      - name: Package Linux
+        run: fyne-cross linux -arch=${{ matrix.arch }} -name git-worktree-manager -release --pull
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Prepare release asset
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p release-assets
+          SRC="fyne-cross/dist/linux-${{ matrix.arch }}"
+          TARBALL="$SRC/git-worktree-manager.tar.xz"
+          if [[ ! -f "$TARBALL" ]]; then
+            echo "Expected tarball not found in $SRC:"
+            ls -laR fyne-cross/dist || true
+            exit 1
+          fi
+          cp "$TARBALL" "release-assets/git-worktree-manager-${VERSION}-linux-${{ matrix.arch }}.tar.xz"
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-${{ matrix.arch }}
-          path: fyne-cross/dist/${{ matrix.os }}-${{ matrix.arch }}/
+          name: linux-${{ matrix.arch }}
+          path: release-assets/
 
   release:
-    needs: package
+    needs: package-linux
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
-      - name: Create release archives
-        run: |
-          mkdir -p release
-          find artifacts -type f | while read -r f; do
-            base=$(basename "$f")
-            dir=$(dirname "$f" | xargs basename)
-            case "$base" in
-              *.tar.xz|*.zip|*.exe) cp "$f" "release/${dir}-${base}" ;;
-              *) cp -a "$f" "release/${dir}-$(basename "$f")" ;;
-            esac
-          done
-          cd release && zip -r ../git-worktree-manager-packages.zip .
+      - name: List release assets
+        run: find artifacts -type f -ls
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: git-worktree-manager-packages.zip
+          generate_release_notes: true
+          files: artifacts/*
