@@ -84,24 +84,26 @@ func (s *appState) welcomeView() fyne.CanvasObject {
 	)
 
 	if len(recentPaths) > 0 {
-		recentList := widget.NewList(
-			func() int { return len(recentPaths) },
-			func() fyne.CanvasObject {
-				return widget.NewLabel("template")
-			},
-			func(id widget.ListItemID, obj fyne.CanvasObject) {
-				obj.(*widget.Label).SetText(recentPaths[id])
-			},
+		recentRows := container.NewVBox(
+			container.NewGridWithColumns(2,
+				widget.NewLabelWithStyle("Repository Dir", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+				widget.NewLabelWithStyle("Repository Path", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			),
 		)
-		recentList.OnSelected = func(id widget.ListItemID) {
-			s.openRepo(recentPaths[id])
+		for _, path := range recentPaths {
+			recentRows.Add(s.recentRepoRow(path))
 		}
 		content.Add(widget.NewSeparator())
 		content.Add(widget.NewLabel("Recent"))
-		content.Add(recentList)
+		content.Add(recentRows)
 	}
 
 	return container.NewBorder(nil, nil, nil, nil, content)
+}
+
+func (s *appState) recentRepoRow(path string) fyne.CanvasObject {
+	p := path
+	return ui.NewTappableRow(filepath.Base(p), p, func() { s.openRepo(p) })
 }
 
 func (s *appState) loadRecentPaths() []string {
@@ -424,26 +426,29 @@ func filterBranches(branches []string, query string) []string {
 	return filtered
 }
 
-func (s *appState) showAddDialog() {
-	pathEntry := widget.NewEntry()
-	pathEntry.SetPlaceHolder("/path/to/new/worktree")
+func preferredBranch(branches []string, preferred string) string {
+	for _, branch := range branches {
+		if branch == preferred {
+			return preferred
+		}
+	}
+	if len(branches) > 0 {
+		return branches[0]
+	}
+	return ""
+}
 
-	modeSelect := widget.NewSelect([]string{"Existing branch", "New branch"}, nil)
-	modeSelect.SetSelected("Existing branch")
-
-	sortedBranches := append([]string(nil), s.branches...)
-	sort.Strings(sortedBranches)
-
+func branchSelectorPanel(branches []string, preferred string) (*widget.Select, fyne.CanvasObject) {
 	branchSearch := widget.NewEntry()
 	branchSearch.SetPlaceHolder("Search branches...")
 
-	branchSelect := widget.NewSelect(filterBranches(sortedBranches, ""), nil)
-	if len(sortedBranches) > 0 {
-		branchSelect.SetSelected(sortedBranches[0])
+	branchSelect := widget.NewSelect(filterBranches(branches, ""), nil)
+	if selected := preferredBranch(branches, preferred); selected != "" {
+		branchSelect.SetSelected(selected)
 	}
 
 	branchSearch.OnChanged = func(query string) {
-		filtered := filterBranches(sortedBranches, query)
+		filtered := filterBranches(branches, query)
 		current := branchSelect.Selected
 		branchSelect.SetOptions(filtered)
 		if len(filtered) == 0 {
@@ -459,18 +464,39 @@ func (s *appState) showAddDialog() {
 		branchSelect.SetSelected(filtered[0])
 	}
 
-	existingBranchPanel := container.NewVBox(branchSearch, branchSelect)
+	return branchSelect, container.NewVBox(branchSearch, branchSelect)
+}
+
+func (s *appState) showAddDialog() {
+	pathEntry := widget.NewEntry()
+	pathEntry.SetPlaceHolder("/path/to/new/worktree")
+
+	modeSelect := widget.NewSelect([]string{"Existing branch", "New branch"}, nil)
+	modeSelect.SetSelected("Existing branch")
+
+	sortedBranches := append([]string(nil), s.branches...)
+	sort.Strings(sortedBranches)
+
+	branchSelect, existingBranchPanel := branchSelectorPanel(sortedBranches, "")
+	sourceBranchSelect, sourceBranchPanel := branchSelectorPanel(sortedBranches, "develop")
 
 	newBranchEntry := widget.NewEntry()
 	newBranchEntry.SetPlaceHolder("feature/my-branch")
-	newBranchEntry.Hide()
+
+	newBranchPanel := container.NewVBox(
+		widget.NewLabel("New branch name"),
+		newBranchEntry,
+		widget.NewLabel("Source branch"),
+		sourceBranchPanel,
+	)
+	newBranchPanel.Hide()
 
 	modeSelect.OnChanged = func(sel string) {
 		if sel == "New branch" {
 			existingBranchPanel.Hide()
-			newBranchEntry.Show()
+			newBranchPanel.Show()
 		} else {
-			newBranchEntry.Hide()
+			newBranchPanel.Hide()
 			existingBranchPanel.Show()
 		}
 	}
@@ -478,7 +504,7 @@ func (s *appState) showAddDialog() {
 	form := widget.NewForm(
 		widget.NewFormItem("Path", pathEntry),
 		widget.NewFormItem("Mode", modeSelect),
-		widget.NewFormItem("Branch", container.NewStack(existingBranchPanel, newBranchEntry)),
+		widget.NewFormItem("Branch", container.NewStack(existingBranchPanel, newBranchPanel)),
 	)
 
 	d := dialog.NewCustomConfirm("Add worktree", "Create", "Cancel", form, func(ok bool) {
@@ -497,25 +523,29 @@ func (s *appState) showAddDialog() {
 		}
 
 		newBranch := modeSelect.Selected == "New branch"
-		branch := branchSelect.Selected
+		var branch, sourceBranch string
 		if newBranch {
 			branch = strings.TrimSpace(newBranchEntry.Text)
+			sourceBranch = sourceBranchSelect.Selected
 			if branch == "" {
 				dialog.ShowError(fmt.Errorf("branch name is required"), s.window)
 				return
 			}
-		} else if branch == "" {
-			dialog.ShowError(fmt.Errorf("select a branch"), s.window)
-			return
+		} else {
+			branch = branchSelect.Selected
+			if branch == "" {
+				dialog.ShowError(fmt.Errorf("select a branch"), s.window)
+				return
+			}
 		}
 
-		if err := gitops.AddWorktree(s.repoPath, abs, branch, newBranch); err != nil {
+		if err := gitops.AddWorktree(s.repoPath, abs, branch, newBranch, sourceBranch); err != nil {
 			dialog.ShowError(err, s.window)
 			return
 		}
 		s.refresh()
 	}, s.window)
-	d.Resize(fyne.NewSize(420, 260))
+	d.Resize(fyne.NewSize(420, 320))
 	d.Show()
 }
 

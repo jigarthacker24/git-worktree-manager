@@ -53,17 +53,22 @@ func ListBranches(repoPath string) ([]string, error) {
 	return branches, nil
 }
 
-func AddWorktree(repoPath, wtPath, branch string, newBranch bool) error {
-	args := []string{"worktree", "add"}
-	if newBranch {
-		args = append(args, "-b", branch)
-	}
-	args = append(args, wtPath)
-	if !newBranch {
-		args = append(args, branch)
-	}
+func AddWorktree(repoPath, wtPath, branch string, newBranch bool, sourceBranch string) error {
+	args := addWorktreeArgs(wtPath, branch, newBranch, sourceBranch)
 	_, err := runGit(repoPath, args...)
 	return err
+}
+
+func addWorktreeArgs(wtPath, branch string, newBranch bool, sourceBranch string) []string {
+	args := []string{"worktree", "add"}
+	if newBranch {
+		args = append(args, "-b", branch, wtPath)
+		if sourceBranch != "" {
+			args = append(args, sourceBranch)
+		}
+		return args
+	}
+	return append(args, wtPath, branch)
 }
 
 func RemoveWorktree(repoPath, wtPath string, force bool) error {
