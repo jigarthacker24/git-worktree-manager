@@ -47,6 +47,16 @@ func IconButton(icon fyne.Resource, hint string, onTap func(), onHint func(strin
 	return WrapWithHint(btn, hint, onHint)
 }
 
+func (h *hintWidget) SetHint(hint string) {
+	h.hint = hint
+}
+
+func SetHint(wrapped fyne.CanvasObject, hint string) {
+	if h, ok := wrapped.(*hintWidget); ok {
+		h.SetHint(hint)
+	}
+}
+
 func ButtonFromHint(wrapped fyne.CanvasObject) *widget.Button {
 	h, ok := wrapped.(*hintWidget)
 	if !ok {
@@ -54,4 +64,14 @@ func ButtonFromHint(wrapped fyne.CanvasObject) *widget.Button {
 	}
 	btn, _ := h.child.(*widget.Button)
 	return btn
+}
+
+func ButtonsFromHintHBox(hbox *fyne.Container) []*widget.Button {
+	btns := make([]*widget.Button, 0, len(hbox.Objects))
+	for _, obj := range hbox.Objects {
+		if btn := ButtonFromHint(obj); btn != nil {
+			btns = append(btns, btn)
+		}
+	}
+	return btns
 }

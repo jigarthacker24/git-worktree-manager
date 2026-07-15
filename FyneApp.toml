@@ -4,8 +4,8 @@ Website = "https://github.com/jigarthacker24/git-worktree-manager"
 Icon = "Icon.png"
 Name = "Git Worktree Manager"
 ID = "io.github.jigarthacker24.gitworktreemanager"
-Version = "1.0.1"
-Build = 3
+Version = "1.0.2"
+Build = 4
 
 [Development]
 HelperText = "Requires git in PATH"

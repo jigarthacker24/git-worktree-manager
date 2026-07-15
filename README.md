@@ -7,10 +7,10 @@ Repository: [github.com/jigarthacker24/git-worktree-manager](https://github.com/
 ## Features
 
 - Open a cloned repository by path (with recent repos)
-- List worktrees: branch, folder name, path
+- List worktrees: directory, branch, path
 - Pin up to 3 worktrees per repository
 - Copy branch name or worktree path
-- Open a worktree in Cursor IDE
+- Open a worktree in VS Code, Cursor, or Claude Code (icons disabled when not installed)
 - Create worktrees from an existing branch (searchable) or a new branch
 - Remove worktrees (with confirmation and optional force)
 
@@ -25,7 +25,10 @@ Repository: [github.com/jigarthacker24/git-worktree-manager](https://github.com/
 ### Run packaged app
 
 - `git` in your PATH
-- On macOS: Cursor at `/Applications/Cursor.app` or `cursor` in PATH
+- Optional IDEs (install any you want to use; unavailable IDEs show as disabled icons):
+  - **VS Code:** `code` in PATH or `/Applications/Visual Studio Code.app` (macOS)
+  - **Cursor:** `cursor` in PATH or `/Applications/Cursor.app` (macOS)
+  - **Claude Code:** `claude` CLI and/or `claude-cli://` URL handler (installed by the [native installer](https://claude.ai/install)). The Claude desktop chat app alone does not include Code on the free plan (Pro/Max required for desktop Code).
 
 ## Install
 

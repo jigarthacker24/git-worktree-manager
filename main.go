@@ -27,8 +27,11 @@ type appState struct {
 	worktrees  []gitops.Worktree
 	branches   []string
 	list       *widget.List
+	colHeader  fyne.CanvasObject
+	rowMetrics ui.RowMetrics
 	status     *widget.Label
 	selectedID widget.ListItemID
+	ideAvail   ide.Availability
 }
 
 const (
@@ -146,6 +149,8 @@ func (s *appState) openRepo(path string) {
 
 func (s *appState) mainView() fyne.CanvasObject {
 	s.status = widget.NewLabel("")
+	s.ideAvail = ide.Detect()
+	s.rowMetrics = ui.RowMetrics{DirWidth: ui.ComputeDirWidth(s.worktrees)}
 	s.list = widget.NewList(
 		func() int { return len(s.worktrees) },
 		func() fyne.CanvasObject {
@@ -157,44 +162,51 @@ func (s *appState) mainView() fyne.CanvasObject {
 			pinBtn := widget.NewButtonWithIcon("", ui.PinIcon(), nil)
 			pinBtn.Importance = widget.LowImportance
 
-			openBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), nil)
-			openBtn.Importance = widget.LowImportance
-			openCell := ui.WrapWithHint(openBtn, "Open with Cursor", s.setStatus)
+			branchLbl := widget.NewLabel("branch")
+			pathLbl := widget.NewLabel("path")
 
-			cols := container.NewGridWithColumns(3,
-				container.NewHBox(widget.NewLabel("branch"), copyIcon()),
-				widget.NewLabel("dir"),
-				container.NewHBox(widget.NewLabel("path"), copyIcon()),
+			openBox := container.NewHBox(
+				ui.IconButton(ui.VSCodeIcon(), "Open in VS Code", nil, s.setStatus),
+				ui.IconButton(ui.CursorIcon(), "Open in Cursor", nil, s.setStatus),
+				ui.IconButton(ui.ClaudeIcon(), "Open in Claude Code", nil, s.setStatus),
 			)
-			return container.NewBorder(nil, nil, pinBtn, openCell, cols)
+
+			cols := ui.NewWorktreeCenter(&s.rowMetrics.DirWidth,
+				widget.NewLabel("dir"),
+				ui.NewTextWithCopy(branchLbl, copyIcon()),
+				ui.NewTextWithCopy(pathLbl, copyIcon()),
+			)
+			return container.NewBorder(nil, nil, pinBtn, openBox, cols)
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id == 0 {
+				s.fitColumnsToRow(obj)
+			}
 			wt := s.worktrees[id]
 			border := obj.(*fyne.Container)
 			cols := border.Objects[0].(*fyne.Container)
 			pinBtn := border.Objects[1].(*widget.Button)
-			openBtn := ui.ButtonFromHint(border.Objects[2])
 
-			branchBox := cols.Objects[0].(*fyne.Container)
-			dirLbl := cols.Objects[1].(*widget.Label)
-			pathBox := cols.Objects[2].(*fyne.Container)
+			dirLbl := cols.Objects[0].(*widget.Label)
+			branchCell := cols.Objects[1].(*fyne.Container)
+			pathCell := cols.Objects[2].(*fyne.Container)
+			openBox := border.Objects[2].(*fyne.Container)
 
-			branchLbl := branchBox.Objects[0].(*widget.Label)
-			copyBranchBtn := branchBox.Objects[1].(*widget.Button)
-			pathLbl := pathBox.Objects[0].(*widget.Label)
-			copyPathBtn := pathBox.Objects[1].(*widget.Button)
+			branchLbl := ui.LabelFromTextCell(branchCell)
+			copyBranchBtn := ui.ButtonFromTextCell(branchCell)
+			pathLbl := ui.LabelFromTextCell(pathCell)
+			copyPathBtn := ui.ButtonFromTextCell(pathCell)
+			ideBtns := ui.ButtonsFromHintHBox(openBox)
 
-			branch := wt.Branch
-			if branch == "" {
-				branch = "(detached)"
-			}
-			displayBranch := branch
-			if wt.Main {
-				displayBranch += " · main"
-			}
-			branchLbl.SetText(displayBranch)
 			dirLbl.SetText(wt.DirName)
+			branchLbl.SetText(ui.WorktreeBranchLabel(wt))
 			pathLbl.SetText(wt.Path)
+			branchLbl.Truncation = fyne.TextTruncateOff
+			if s.rowMetrics.TruncatePath {
+				pathLbl.Truncation = fyne.TextTruncateEllipsis
+			} else {
+				pathLbl.Truncation = fyne.TextTruncateOff
+			}
 
 			if s.isPinned(wt.Path) {
 				pinBtn.SetIcon(ui.PinFilledIcon())
@@ -211,8 +223,12 @@ func (s *appState) mainView() fyne.CanvasObject {
 			copyPathBtn.OnTapped = func() {
 				s.copyToClipboard(wt.Path, "worktree path")
 			}
-			openBtn.OnTapped = func() {
-				s.openInCursor(wt.Path)
+
+			s.bindIDEButton(ideBtns, 0, ide.VSCode, wt.Path, s.ideAvail.VSCode)
+			s.bindIDEButton(ideBtns, 1, ide.Cursor, wt.Path, s.ideAvail.Cursor)
+			s.bindIDEButton(ideBtns, 2, ide.Claude, wt.Path, s.ideAvail.Claude)
+			if len(openBox.Objects) > 2 {
+				ui.SetHint(openBox.Objects[2], ide.ClaudeHint(s.ideAvail))
 			}
 		},
 	)
@@ -235,17 +251,18 @@ func (s *appState) mainView() fyne.CanvasObject {
 
 	toolbar := container.NewHBox(addBtn, removeBtn, layout.NewSpacer(), refreshBtn)
 
-	headerCols := container.NewGridWithColumns(3,
-		widget.NewLabelWithStyle("Branch", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+	headerCols := ui.NewWorktreeCenter(&s.rowMetrics.DirWidth,
 		widget.NewLabelWithStyle("Dir", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle("Branch", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewLabelWithStyle("Path", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 	)
-	openHeader := container.NewCenter(
-		widget.NewLabelWithStyle("Open", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+	openHeader := container.NewHBox(
+		layout.NewSpacer(),
+		widget.NewLabelWithStyle("Open", fyne.TextAlignTrailing, fyne.TextStyle{Bold: true}),
 	)
-	columnHeader := container.NewBorder(nil, nil, widget.NewLabel(""), openHeader, headerCols)
+	s.colHeader = container.NewBorder(nil, nil, ui.PinColumnSpacer(), openHeader, headerCols)
 
-	listPanel := container.NewBorder(columnHeader, nil, nil, nil, s.list)
+	listPanel := container.NewBorder(s.colHeader, nil, nil, nil, s.list)
 
 	return container.NewBorder(
 		container.NewVBox(header, widget.NewSeparator(), toolbar),
@@ -253,6 +270,32 @@ func (s *appState) mainView() fyne.CanvasObject {
 		nil, nil,
 		listPanel,
 	)
+}
+
+func (s *appState) fitColumnsToRow(row fyne.CanvasObject) {
+	border, ok := row.(*fyne.Container)
+	if !ok {
+		return
+	}
+	center, ok := border.Objects[0].(*fyne.Container)
+	if !ok {
+		return
+	}
+	centerWidth := center.Size().Width
+	if centerWidth <= 0 {
+		return
+	}
+	pathHalf := ui.FlexHalfWidth(centerWidth, s.rowMetrics.DirWidth)
+	truncate := ui.ComputeTruncatePath(s.worktrees, pathHalf)
+	next := ui.RowMetrics{DirWidth: s.rowMetrics.DirWidth, TruncatePath: truncate}
+	if next == s.rowMetrics {
+		return
+	}
+	s.rowMetrics = next
+	s.list.Refresh()
+	if s.colHeader != nil {
+		s.colHeader.Refresh()
+	}
 }
 
 func (s *appState) refresh() {
@@ -268,9 +311,14 @@ func (s *appState) refresh() {
 	}
 	s.worktrees = s.sortWorktrees(wts)
 	s.branches = branches
+	s.rowMetrics = ui.RowMetrics{DirWidth: ui.ComputeDirWidth(s.worktrees)}
+	s.ideAvail = ide.Detect()
 	s.selectedID = -1
 	s.list.UnselectAll()
 	s.list.Refresh()
+	if s.colHeader != nil {
+		s.colHeader.Refresh()
+	}
 	s.setStatus(fmt.Sprintf("%d worktree(s)", len(wts)))
 }
 
@@ -280,8 +328,32 @@ func (s *appState) setStatus(msg string) {
 	}
 }
 
-func (s *appState) openInCursor(path string) {
-	if err := ide.OpenInCursor(path); err != nil {
+func (s *appState) bindIDEButton(btns []*widget.Button, idx int, kind ide.Kind, path string, available bool) {
+	if idx >= len(btns) {
+		return
+	}
+	btn := btns[idx]
+	if available {
+		btn.Enable()
+		btn.OnTapped = func() { s.openInIDE(path, kind) }
+	} else {
+		btn.Disable()
+		btn.OnTapped = nil
+	}
+}
+
+func (s *appState) openInIDE(path string, kind ide.Kind) {
+	if kind == ide.Claude && !s.ideAvail.Claude && s.ideAvail.ClaudeDesktopApp {
+		dialog.ShowInformation("Claude Code",
+			"The Claude desktop app is installed, but Claude Code is not available on your plan.\n\n"+
+				"Claude Code in the desktop app requires a Pro or Max subscription.\n\n"+
+				"Install the Claude Code CLI to use it from the terminal:\n\n"+
+				"curl -fsSL https://claude.ai/install.sh | bash\n\n"+
+				"Then click Refresh in this app.",
+			s.window)
+		return
+	}
+	if err := ide.Open(path, kind); err != nil {
 		dialog.ShowError(err, s.window)
 	}
 }
