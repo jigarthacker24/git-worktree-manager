@@ -32,13 +32,18 @@ type appState struct {
 	status     *widget.Label
 	selectedID widget.ListItemID
 	ideAvail   ide.Availability
+	wtBaseDirField    *ui.ReadOnlyPathField
+	wtNamePrefixEntry *widget.Entry
 }
 
 const (
-	recentPathsKey      = "recent_repo_paths"
-	pinnedWorktreesKey  = "pinned_worktrees"
-	maxRecentPaths      = 5
-	maxPinnedWorktrees  = 3
+	recentPathsKey         = "recent_repo_paths"
+	pinnedWorktreesKey     = "pinned_worktrees"
+	worktreeBaseDirKey     = "worktree_base_dir"
+	worktreeNamePrefixKey  = "worktree_name_prefix"
+	worktreePrefixInitKey  = "worktree_name_prefix_init"
+	maxRecentPaths         = 10
+	maxPinnedWorktrees     = 5
 )
 
 func main() {
@@ -251,6 +256,31 @@ func (s *appState) mainView() fyne.CanvasObject {
 
 	toolbar := container.NewHBox(addBtn, removeBtn, layout.NewSpacer(), refreshBtn)
 
+	s.wtBaseDirField = ui.NewReadOnlyPathField(s.loadOrInitWorktreeBaseDir())
+
+	baseDirBrowse := widget.NewButton("Browse", func() {
+		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+			if err != nil || uri == nil {
+				return
+			}
+			s.setWorktreeBaseDir(uri.Path())
+		}, s.window)
+	})
+
+	s.wtNamePrefixEntry = widget.NewEntry()
+	s.wtNamePrefixEntry.SetText(s.loadOrInitWorktreeNamePrefix())
+	s.wtNamePrefixEntry.SetPlaceHolder("optional prefix for new worktree folder names")
+	s.wtNamePrefixEntry.OnChanged = func(text string) {
+		s.saveWorktreeNamePrefix(text)
+	}
+
+	worktreeDefaults := container.NewVBox(
+		widget.NewLabel("Default worktree directory"),
+		container.NewBorder(nil, nil, nil, baseDirBrowse, s.wtBaseDirField),
+		widget.NewLabel("Worktree directory name prefix"),
+		s.wtNamePrefixEntry,
+	)
+
 	headerCols := ui.NewWorktreeCenter(&s.rowMetrics.DirWidth,
 		widget.NewLabelWithStyle("Dir", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewLabelWithStyle("Branch", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -265,7 +295,7 @@ func (s *appState) mainView() fyne.CanvasObject {
 	listPanel := container.NewBorder(s.colHeader, nil, nil, nil, s.list)
 
 	return container.NewBorder(
-		container.NewVBox(header, widget.NewSeparator(), toolbar),
+		container.NewVBox(header, widget.NewSeparator(), toolbar, widget.NewSeparator(), worktreeDefaults),
 		s.status,
 		nil, nil,
 		listPanel,
@@ -540,7 +570,13 @@ func branchSelectorPanel(branches []string, preferred string) (*widget.Select, f
 }
 
 func (s *appState) showAddDialog() {
+	if strings.TrimSpace(s.wtBaseDirField.Text()) == "" {
+		dialog.ShowError(fmt.Errorf("default worktree directory is required"), s.window)
+		return
+	}
+
 	pathEntry := widget.NewEntry()
+	pathEntry.SetText(s.defaultNewWorktreePath())
 	pathEntry.SetPlaceHolder("/path/to/new/worktree")
 
 	modeSelect := widget.NewSelect([]string{"Existing branch", "New branch"}, nil)
@@ -619,6 +655,78 @@ func (s *appState) showAddDialog() {
 	}, s.window)
 	d.Resize(fyne.NewSize(420, 320))
 	d.Show()
+}
+
+func (s *appState) repoPrefKey(name string) string {
+	return s.normalizedPath(s.repoPath) + "\x00" + name
+}
+
+func defaultWorktreeBaseDir(repoPath string) string {
+	return filepath.Join(filepath.Dir(repoPath), "worktrees")
+}
+
+func defaultWorktreeNamePrefix(repoPath string) string {
+	return filepath.Base(repoPath) + "-"
+}
+
+func (s *appState) loadOrInitWorktreeBaseDir() string {
+	key := s.repoPrefKey(worktreeBaseDirKey)
+	if v := strings.TrimSpace(s.prefs.String(key)); v != "" {
+		return v
+	}
+	v := defaultWorktreeBaseDir(s.repoPath)
+	s.prefs.SetString(key, v)
+	return v
+}
+
+func (s *appState) setWorktreeBaseDir(dir string) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	if s.wtBaseDirField != nil {
+		s.wtBaseDirField.SetText(dir)
+	}
+	s.saveWorktreeBaseDir(dir)
+}
+
+func (s *appState) saveWorktreeBaseDir(dir string) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	s.prefs.SetString(s.repoPrefKey(worktreeBaseDirKey), dir)
+}
+
+func (s *appState) loadOrInitWorktreeNamePrefix() string {
+	initKey := s.repoPrefKey(worktreePrefixInitKey)
+	if !s.prefs.Bool(initKey) {
+		prefix := defaultWorktreeNamePrefix(s.repoPath)
+		s.prefs.SetBool(initKey, true)
+		s.prefs.SetString(s.repoPrefKey(worktreeNamePrefixKey), prefix)
+		return prefix
+	}
+	return s.prefs.String(s.repoPrefKey(worktreeNamePrefixKey))
+}
+
+func (s *appState) saveWorktreeNamePrefix(prefix string) {
+	s.prefs.SetBool(s.repoPrefKey(worktreePrefixInitKey), true)
+	s.prefs.SetString(s.repoPrefKey(worktreeNamePrefixKey), prefix)
+}
+
+func (s *appState) defaultNewWorktreePath() string {
+	base := strings.TrimSpace(s.wtBaseDirField.Text())
+	if base == "" {
+		base = s.loadOrInitWorktreeBaseDir()
+	}
+	prefix := s.wtNamePrefixEntry.Text
+	return filepath.Join(base, prefix)
 }
 
 func (s *appState) removeSelected() {

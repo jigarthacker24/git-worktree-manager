@@ -8,7 +8,7 @@ Repository: [github.com/jigarthacker24/git-worktree-manager](https://github.com/
 
 - Open a cloned repository by path (with recent repos)
 - List worktrees: directory, branch, path
-- Pin up to 3 worktrees per repository
+- Pin up to 5 worktrees per repository
 - Copy branch name or worktree path
 - Open a worktree in VS Code, Cursor, or Claude Code (icons disabled when not installed)
 - Create worktrees from an existing branch (searchable) or a new branch
