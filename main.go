@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -267,6 +268,8 @@ func (s *appState) mainView() fyne.CanvasObject {
 		}, s.window)
 	})
 
+	moveAllBtn := widget.NewButton("Move all here", s.moveAllWorktreesHere)
+
 	s.wtNamePrefixEntry = widget.NewEntry()
 	s.wtNamePrefixEntry.SetText(s.loadOrInitWorktreeNamePrefix())
 	s.wtNamePrefixEntry.SetPlaceHolder("optional prefix for new worktree folder names")
@@ -276,7 +279,7 @@ func (s *appState) mainView() fyne.CanvasObject {
 
 	worktreeDefaults := container.NewVBox(
 		widget.NewLabel("Default worktree directory"),
-		container.NewBorder(nil, nil, nil, baseDirBrowse, s.wtBaseDirField),
+		container.NewBorder(nil, nil, nil, container.NewHBox(moveAllBtn, baseDirBrowse), s.wtBaseDirField),
 		widget.NewLabel("Worktree directory name prefix"),
 		s.wtNamePrefixEntry,
 	)
@@ -727,6 +730,92 @@ func (s *appState) defaultNewWorktreePath() string {
 	}
 	prefix := s.wtNamePrefixEntry.Text
 	return filepath.Join(base, prefix)
+}
+
+func (s *appState) moveAllWorktreesHere() {
+	baseDir := strings.TrimSpace(s.wtBaseDirField.Text())
+	if baseDir == "" {
+		dialog.ShowError(fmt.Errorf("default worktree directory is required"), s.window)
+		return
+	}
+	baseDir = s.normalizedPath(baseDir)
+
+	moves, err := gitops.PlanWorktreeMoves(s.worktrees, baseDir)
+	if err != nil {
+		dialog.ShowError(err, s.window)
+		return
+	}
+	if len(moves) == 0 {
+		dialog.ShowInformation("Move worktrees", "All linked worktrees are already under:\n"+baseDir, s.window)
+		return
+	}
+
+	var summary strings.Builder
+	fmt.Fprintf(&summary, "Move %d worktree(s) under:\n%s\n\n", len(moves), baseDir)
+	for _, m := range moves {
+		fmt.Fprintf(&summary, "• %s\n  → %s\n", m.From, m.To)
+	}
+
+	dialog.ShowConfirm("Move all worktrees", summary.String(), func(ok bool) {
+		if !ok {
+			return
+		}
+		if err := os.MkdirAll(baseDir, 0o755); err != nil {
+			dialog.ShowError(err, s.window)
+			return
+		}
+		s.executeWorktreeMoves(moves, 0)
+	}, s.window)
+}
+
+func (s *appState) executeWorktreeMoves(moves []gitops.WorktreeMove, startAt int) {
+	for i := startAt; i < len(moves); i++ {
+		m := moves[i]
+		if err := gitops.MoveWorktree(s.repoPath, m.From, m.To, false); err != nil {
+			idx := i
+			msg := fmt.Sprintf("Failed to move %s:\n%s\n\nForce move and continue?", m.From, err)
+			if idx > startAt {
+				msg = fmt.Sprintf("Moved %d of %d worktree(s).\n\n%s", idx-startAt, len(moves)-startAt, msg)
+			}
+			dialog.ShowConfirm("Force move?", msg, func(force bool) {
+				if !force {
+					s.refresh()
+					return
+				}
+				if err := gitops.MoveWorktree(s.repoPath, m.From, m.To, true); err != nil {
+					dialog.ShowError(err, s.window)
+					s.refresh()
+					return
+				}
+				s.migratePinnedPath(m.From, m.To)
+				s.executeWorktreeMoves(moves, idx+1)
+			}, s.window)
+			return
+		}
+		s.migratePinnedPath(m.From, m.To)
+	}
+	s.refresh()
+	if len(moves) > 0 {
+		s.setStatus(fmt.Sprintf("Moved %d worktree(s)", len(moves)))
+	}
+}
+
+func (s *appState) migratePinnedPath(oldPath, newPath string) {
+	entries := s.prefs.StringList(pinnedWorktreesKey)
+	normRepo := s.normalizedPath(s.repoPath)
+	normOld := s.normalizedPath(oldPath)
+	changed := false
+	for i, entry := range entries {
+		repo, storedWT, ok := splitPinEntry(entry)
+		if !ok || repo != normRepo || s.normalizedPath(storedWT) != normOld {
+			continue
+		}
+		entries[i] = s.pinEntry(newPath)
+		changed = true
+	}
+	if changed {
+		s.prefs.SetStringList(pinnedWorktreesKey, entries)
+	}
 }
 
 func (s *appState) removeSelected() {

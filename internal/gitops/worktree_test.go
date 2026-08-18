@@ -26,6 +26,58 @@ branch refs/heads/feature
 	}
 }
 
+func TestPlanWorktreeMoves(t *testing.T) {
+	base := "/projects/worktrees"
+	worktrees := []Worktree{
+		{Path: "/repo/main", DirName: "main", Main: true},
+		{Path: "/projects/worktrees/feature-a", DirName: "feature-a"},
+		{Path: "/elsewhere/bugfix", DirName: "bugfix"},
+		{Path: "/tmp/hotfix", DirName: "hotfix"},
+	}
+
+	moves, err := PlanWorktreeMoves(worktrees, base)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 2 {
+		t.Fatalf("expected 2 moves, got %d: %+v", len(moves), moves)
+	}
+	if moves[0].From != "/elsewhere/bugfix" || moves[0].To != "/projects/worktrees/bugfix" {
+		t.Fatalf("unexpected first move: %+v", moves[0])
+	}
+	if moves[1].From != "/tmp/hotfix" || moves[1].To != "/projects/worktrees/hotfix" {
+		t.Fatalf("unexpected second move: %+v", moves[1])
+	}
+}
+
+func TestPlanWorktreeMovesCollision(t *testing.T) {
+	worktrees := []Worktree{
+		{Path: "/a/one", DirName: "wt"},
+		{Path: "/b/two", DirName: "wt"},
+	}
+	_, err := PlanWorktreeMoves(worktrees, "/dest")
+	if err == nil {
+		t.Fatal("expected collision error")
+	}
+}
+
+func TestMoveWorktreeArgs(t *testing.T) {
+	got := moveWorktreeArgs("/old/wt", "/new/wt", false)
+	want := []string{"worktree", "move", "/old/wt", "/new/wt"}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+	got = moveWorktreeArgs("/old/wt", "/new/wt", true)
+	want = []string{"worktree", "move", "--force", "/old/wt", "/new/wt"}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
 func TestAddWorktreeArgs(t *testing.T) {
 	tests := []struct {
 		name         string

@@ -81,6 +81,65 @@ func RemoveWorktree(repoPath, wtPath string, force bool) error {
 	return err
 }
 
+// WorktreeMove describes relocating one linked worktree into the default directory.
+type WorktreeMove struct {
+	From string
+	To   string
+}
+
+// PlanWorktreeMoves returns moves for linked worktrees not already direct children of baseDir.
+// The main worktree is never moved.
+func PlanWorktreeMoves(worktrees []Worktree, baseDir string) ([]WorktreeMove, error) {
+	base, err := NormalizePath(baseDir)
+	if err != nil {
+		return nil, err
+	}
+	if base == "" {
+		return nil, fmt.Errorf("worktree directory is required")
+	}
+
+	var moves []WorktreeMove
+	seenDest := make(map[string]string)
+	for _, wt := range worktrees {
+		if wt.Main {
+			continue
+		}
+		parent, err := NormalizePath(filepath.Dir(wt.Path))
+		if err != nil {
+			return nil, err
+		}
+		if parent == base {
+			continue
+		}
+		dest, err := NormalizePath(filepath.Join(base, wt.DirName))
+		if err != nil {
+			return nil, err
+		}
+		if dest == wt.Path {
+			continue
+		}
+		if other, ok := seenDest[dest]; ok {
+			return nil, fmt.Errorf("multiple worktrees would move to %s (%s and %s)", dest, other, wt.Path)
+		}
+		seenDest[dest] = wt.Path
+		moves = append(moves, WorktreeMove{From: wt.Path, To: dest})
+	}
+	return moves, nil
+}
+
+func MoveWorktree(repoPath, from, to string, force bool) error {
+	_, err := runGit(repoPath, moveWorktreeArgs(from, to, force)...)
+	return err
+}
+
+func moveWorktreeArgs(from, to string, force bool) []string {
+	args := []string{"worktree", "move"}
+	if force {
+		args = append(args, "--force")
+	}
+	return append(args, from, to)
+}
+
 func runGit(repoPath string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repoPath
