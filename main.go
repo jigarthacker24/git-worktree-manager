@@ -332,6 +332,10 @@ func (s *appState) fitColumnsToRow(row fyne.CanvasObject) {
 }
 
 func (s *appState) refresh() {
+	s.refreshSelect("")
+}
+
+func (s *appState) refreshSelect(selectPath string) {
 	wts, err := gitops.ListWorktrees(s.repoPath)
 	if err != nil {
 		s.setStatus("Error: " + err.Error())
@@ -347,12 +351,39 @@ func (s *appState) refresh() {
 	s.rowMetrics = ui.RowMetrics{DirWidth: ui.ComputeDirWidth(s.worktrees)}
 	s.ideAvail = ide.Detect()
 	s.selectedID = -1
-	s.list.UnselectAll()
-	s.list.Refresh()
-	if s.colHeader != nil {
-		s.colHeader.Refresh()
+	if s.list != nil {
+		s.list.UnselectAll()
+		s.list.Refresh()
+		if s.colHeader != nil {
+			s.colHeader.Refresh()
+		}
+		if selectPath != "" {
+			s.selectWorktreeByPath(selectPath)
+		}
+	}
+	if selectPath != "" && s.selectedID >= 0 {
+		wt := s.worktrees[s.selectedID]
+		s.setStatus(fmt.Sprintf("Created worktree %s (%s)", wt.DirName, ui.WorktreeBranchLabel(wt)))
+		return
 	}
 	s.setStatus(fmt.Sprintf("%d worktree(s)", len(wts)))
+}
+
+func (s *appState) selectWorktreeByPath(path string) {
+	if s.list == nil {
+		return
+	}
+	norm := s.normalizedPath(path)
+	for i, wt := range s.worktrees {
+		if s.normalizedPath(wt.Path) != norm {
+			continue
+		}
+		id := widget.ListItemID(i)
+		s.selectedID = id
+		s.list.Select(id)
+		s.list.ScrollTo(id)
+		return
+	}
 }
 
 func (s *appState) setStatus(msg string) {
@@ -654,7 +685,9 @@ func (s *appState) showAddDialog() {
 			dialog.ShowError(err, s.window)
 			return
 		}
-		s.refresh()
+		fyne.Do(func() {
+			s.refreshSelect(abs)
+		})
 	}, s.window)
 	d.Resize(fyne.NewSize(420, 320))
 	d.Show()
