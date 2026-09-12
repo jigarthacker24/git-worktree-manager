@@ -41,3 +41,70 @@ func (k Kind) Name() string {
 		return "IDE"
 	}
 }
+
+const (
+	prefNone   = ""
+	prefVSCode = "vscode"
+	prefCursor = "cursor"
+	prefClaude = "claude"
+)
+
+// DoubleClickIDELabels are the labels shown in the default-editor selector.
+var DoubleClickIDELabels = []string{"None", "VS Code", "Cursor", "Claude Code"}
+
+// KindFromPref maps a stored preference value to an IDE kind.
+// Returns false when no editor is configured (None).
+func KindFromPref(value string) (Kind, bool) {
+	switch value {
+	case prefVSCode:
+		return VSCode, true
+	case prefCursor:
+		return Cursor, true
+	case prefClaude:
+		return Claude, true
+	default:
+		return VSCode, false
+	}
+}
+
+// PrefFromKind returns the stored preference value for an IDE kind.
+func PrefFromKind(k Kind) string {
+	switch k {
+	case VSCode:
+		return prefVSCode
+	case Cursor:
+		return prefCursor
+	case Claude:
+		return prefClaude
+	default:
+		return prefNone
+	}
+}
+
+// LabelFromPref returns the UI label for a stored preference value.
+func LabelFromPref(value string) string {
+	switch value {
+	case prefVSCode:
+		return "VS Code"
+	case prefCursor:
+		return "Cursor"
+	case prefClaude:
+		return "Claude Code"
+	default:
+		return "None"
+	}
+}
+
+// PrefFromLabel returns the stored preference value for a UI label.
+func PrefFromLabel(label string) string {
+	switch label {
+	case "VS Code":
+		return prefVSCode
+	case "Cursor":
+		return prefCursor
+	case "Claude Code":
+		return prefClaude
+	default:
+		return prefNone
+	}
+}

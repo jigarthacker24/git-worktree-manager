@@ -33,8 +33,9 @@ type appState struct {
 	status     *widget.Label
 	selectedID widget.ListItemID
 	ideAvail   ide.Availability
-	wtBaseDirField    *ui.ReadOnlyPathField
-	wtNamePrefixEntry *widget.Entry
+	wtBaseDirField       *ui.ReadOnlyPathField
+	wtNamePrefixEntry    *widget.Entry
+	defaultEditorSelect  *ui.IconSelect
 }
 
 const (
@@ -42,8 +43,9 @@ const (
 	pinnedWorktreesKey     = "pinned_worktrees"
 	worktreeBaseDirKey     = "worktree_base_dir"
 	worktreeNamePrefixKey  = "worktree_name_prefix"
-	worktreePrefixInitKey  = "worktree_name_prefix_init"
-	maxRecentPaths         = 10
+	worktreePrefixInitKey      = "worktree_name_prefix_init"
+	defaultDoubleClickIDEKey   = "default_double_click_ide"
+	maxRecentPaths             = 10
 	maxPinnedWorktrees     = 5
 )
 
@@ -182,7 +184,8 @@ func (s *appState) mainView() fyne.CanvasObject {
 				ui.NewTextWithCopy(branchLbl, copyIcon()),
 				ui.NewTextWithCopy(pathLbl, copyIcon()),
 			)
-			return container.NewBorder(nil, nil, pinBtn, openBox, cols)
+			tapZone := ui.NewDoubleTapZone(cols)
+			return container.NewBorder(nil, nil, pinBtn, openBox, tapZone)
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
 			if id == 0 {
@@ -190,7 +193,8 @@ func (s *appState) mainView() fyne.CanvasObject {
 			}
 			wt := s.worktrees[id]
 			border := obj.(*fyne.Container)
-			cols := border.Objects[0].(*fyne.Container)
+			tapZone := border.Objects[0].(*ui.DoubleTapZone)
+			cols := ui.ListRowCenter(border)
 			pinBtn := border.Objects[1].(*widget.Button)
 
 			dirLbl := cols.Objects[0].(*widget.Label)
@@ -236,6 +240,12 @@ func (s *appState) mainView() fyne.CanvasObject {
 			if len(openBox.Objects) > 2 {
 				ui.SetHint(openBox.Objects[2], ide.ClaudeHint(s.ideAvail))
 			}
+
+			tapZone.OnDoubleTapped = func() {
+				s.selectedID = id
+				s.list.Select(id)
+				s.openWithDefaultEditor(wt.Path)
+			}
 		},
 	)
 	s.list.OnSelected = func(id widget.ListItemID) {
@@ -277,11 +287,24 @@ func (s *appState) mainView() fyne.CanvasObject {
 		s.saveWorktreeNamePrefix(text)
 	}
 
+	s.defaultEditorSelect = ui.NewIconSelect(ui.DoubleClickEditorOptions(), func(label string) {
+		s.prefs.SetString(defaultDoubleClickIDEKey, ide.PrefFromLabel(label))
+	})
+	s.defaultEditorSelect.SetSelected(ide.LabelFromPref(s.prefs.String(defaultDoubleClickIDEKey)))
+
+	prefixColumn := container.NewVBox(
+		widget.NewLabel("Worktree directory name prefix"),
+		s.wtNamePrefixEntry,
+	)
+	editorColumn := container.NewVBox(
+		widget.NewLabel("Double-click opens in"),
+		s.defaultEditorSelect,
+	)
+
 	worktreeDefaults := container.NewVBox(
 		widget.NewLabel("Default worktree directory"),
 		container.NewBorder(nil, nil, nil, container.NewHBox(moveAllBtn, baseDirBrowse), s.wtBaseDirField),
-		widget.NewLabel("Worktree directory name prefix"),
-		s.wtNamePrefixEntry,
+		ui.NewRatioRow(0.6, prefixColumn, editorColumn),
 	)
 
 	headerCols := ui.NewWorktreeCenter(&s.rowMetrics.DirWidth,
@@ -310,8 +333,8 @@ func (s *appState) fitColumnsToRow(row fyne.CanvasObject) {
 	if !ok {
 		return
 	}
-	center, ok := border.Objects[0].(*fyne.Container)
-	if !ok {
+	center := ui.ListRowCenter(border)
+	if center == nil {
 		return
 	}
 	centerWidth := center.Size().Width
@@ -419,7 +442,17 @@ func (s *appState) openInIDE(path string, kind ide.Kind) {
 	}
 	if err := ide.Open(path, kind); err != nil {
 		dialog.ShowError(err, s.window)
+		return
 	}
+	s.setStatus(fmt.Sprintf("Opened %s in %s", filepath.Base(path), kind.Name()))
+}
+
+func (s *appState) openWithDefaultEditor(path string) {
+	kind, ok := ide.KindFromPref(s.prefs.String(defaultDoubleClickIDEKey))
+	if !ok {
+		return
+	}
+	s.openInIDE(path, kind)
 }
 
 func (s *appState) copyToClipboard(text, label string) {
