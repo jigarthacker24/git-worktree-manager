@@ -34,7 +34,7 @@ func (z *DoubleTapZone) DoubleTapped(*fyne.PointEvent) {
 	}
 }
 
-// ListRowCenter returns the worktree column container from a list row border.
+// ListRowCenter returns the branch/path column container from a list row border.
 func ListRowCenter(border *fyne.Container) *fyne.Container {
 	if border == nil || len(border.Objects) == 0 {
 		return nil
@@ -50,6 +50,19 @@ func ListRowCenter(border *fyne.Container) *fyne.Container {
 		return cols
 	}
 	return nil
+}
+
+// ListRowPinDir returns the pin button and directory label from a list row border.
+func ListRowPinDir(border *fyne.Container) (fyne.CanvasObject, *widget.Label) {
+	if border == nil || len(border.Objects) < 2 {
+		return nil, nil
+	}
+	left, ok := border.Objects[1].(*fyne.Container)
+	if !ok || len(left.Objects) < 2 {
+		return nil, nil
+	}
+	dirLbl, _ := left.Objects[1].(*widget.Label)
+	return left.Objects[0], dirLbl
 }
 
 type doubleTapRenderer struct {

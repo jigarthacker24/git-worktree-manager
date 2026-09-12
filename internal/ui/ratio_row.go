@@ -6,6 +6,64 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
+type expandHBoxLayout struct{}
+
+// NewExpandHBox lays out objects in a row; the first object receives all remaining width.
+func NewExpandHBox(objects ...fyne.CanvasObject) *fyne.Container {
+	return container.New(&expandHBoxLayout{}, objects...)
+}
+
+func (l *expandHBoxLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	if len(objects) == 0 {
+		return
+	}
+	gap := theme.Padding()
+	fixedW := float32(0)
+	for i := 1; i < len(objects); i++ {
+		fixedW += objects[i].MinSize().Width
+		if i < len(objects)-1 {
+			fixedW += gap
+		}
+	}
+	if len(objects) > 1 {
+		fixedW += gap
+	}
+	firstW := size.Width - fixedW
+	if firstW < 0 {
+		firstW = 0
+	}
+	x := float32(0)
+	objects[0].Resize(fyne.NewSize(firstW, size.Height))
+	objects[0].Move(fyne.NewPos(x, 0))
+	x += firstW
+	for i := 1; i < len(objects); i++ {
+		if i > 0 {
+			x += gap
+		}
+		ms := objects[i].MinSize()
+		objects[i].Resize(fyne.NewSize(ms.Width, size.Height))
+		objects[i].Move(fyne.NewPos(x, 0))
+		x += ms.Width
+	}
+}
+
+func (l *expandHBoxLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	if len(objects) == 0 {
+		return fyne.NewSize(0, 0)
+	}
+	gap := theme.Padding()
+	width := objects[0].MinSize().Width
+	height := objects[0].MinSize().Height
+	for i := 1; i < len(objects); i++ {
+		ms := objects[i].MinSize()
+		width += gap + ms.Width
+		if ms.Height > height {
+			height = ms.Height
+		}
+	}
+	return fyne.NewSize(width, height)
+}
+
 // NewRatioRow places two columns side by side with the given width ratio for the first column.
 func NewRatioRow(firstRatio float32, first, second fyne.CanvasObject) *fyne.Container {
 	return container.New(&ratioRowLayout{firstRatio: firstRatio}, first, second)

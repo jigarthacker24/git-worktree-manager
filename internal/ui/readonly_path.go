@@ -29,6 +29,16 @@ func (f *ReadOnlyPathField) Text() string {
 	return f.label.Text
 }
 
+// SetTruncate controls whether long paths are shortened with an ellipsis.
+func (f *ReadOnlyPathField) SetTruncate(truncate bool) {
+	if truncate {
+		f.label.Truncation = fyne.TextTruncateEllipsis
+	} else {
+		f.label.Truncation = fyne.TextTruncateOff
+	}
+	f.Refresh()
+}
+
 func (f *ReadOnlyPathField) CreateRenderer() fyne.WidgetRenderer {
 	bg := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
 	bg.StrokeColor = theme.Color(theme.ColorNameInputBorder)

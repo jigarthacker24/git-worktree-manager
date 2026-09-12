@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/jigarthacker24/git-worktree-manager/internal/gitops"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -29,6 +30,89 @@ type worktreeCenterLayout struct {
 // Objects must be: dir, branch cell, path cell.
 func NewWorktreeCenter(dirWidth *float32, objects ...fyne.CanvasObject) *fyne.Container {
 	return container.New(&worktreeCenterLayout{dirWidth: dirWidth}, objects...)
+}
+
+type flexPairLayout struct{}
+
+// NewFlexPair lays out two objects with equal width and ColumnGap between them.
+func NewFlexPair(objects ...fyne.CanvasObject) *fyne.Container {
+	return container.New(&flexPairLayout{}, objects...)
+}
+
+func (l *flexPairLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	gap := ColumnGap()
+	flexW := size.Width - gap
+	if flexW < 0 {
+		flexW = 0
+	}
+	half := flexW / 2
+	if len(objects) > 0 {
+		objects[0].Resize(fyne.NewSize(half, size.Height))
+		objects[0].Move(fyne.NewPos(0, 0))
+	}
+	if len(objects) > 1 {
+		objects[1].Resize(fyne.NewSize(flexW-half, size.Height))
+		objects[1].Move(fyne.NewPos(half+gap, 0))
+	}
+}
+
+func (l *flexPairLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	gap := ColumnGap()
+	minFlex := textWidth("Branch", true)
+	if w := textWidth("Path", true); w > minFlex {
+		minFlex = w
+	}
+	var maxH float32
+	for _, obj := range objects {
+		if h := obj.MinSize().Height; h > maxH {
+			maxH = h
+		}
+	}
+	return fyne.NewSize(minFlex+gap+minFlex, maxH)
+}
+
+type pinDirLayout struct {
+	dirWidth *float32
+}
+
+// NewPinDirCell lays out a pin control and directory label with fixed dir column width.
+func NewPinDirCell(dirWidth *float32, pinBtn, dirLbl fyne.CanvasObject) *fyne.Container {
+	return container.New(&pinDirLayout{dirWidth: dirWidth}, pinBtn, dirLbl)
+}
+
+func (l *pinDirLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	pinW := PinButtonWidth()
+	dirW := float32(0)
+	if l.dirWidth != nil {
+		dirW = *l.dirWidth
+	}
+	if len(objects) > 0 {
+		objects[0].Resize(fyne.NewSize(pinW, size.Height))
+		objects[0].Move(fyne.NewPos(0, 0))
+	}
+	if len(objects) > 1 {
+		objects[1].Resize(fyne.NewSize(dirW, size.Height))
+		objects[1].Move(fyne.NewPos(pinW, 0))
+	}
+}
+
+func (l *pinDirLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	dirW := float32(0)
+	if l.dirWidth != nil {
+		dirW = *l.dirWidth
+	}
+	var maxH float32
+	for _, obj := range objects {
+		if h := obj.MinSize().Height; h > maxH {
+			maxH = h
+		}
+	}
+	return fyne.NewSize(PinButtonWidth()+dirW, maxH)
+}
+
+// PinDirWidth returns the total width of the pin + directory column.
+func PinDirWidth(dirWidth float32) float32 {
+	return PinButtonWidth() + dirWidth
 }
 
 func (l *worktreeCenterLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
@@ -139,7 +223,7 @@ func OpenColumnWidth() float32 {
 }
 
 // NewTextWithCopy is a cell with a label and a copy button reserved on the right.
-func NewTextWithCopy(label *widget.Label, copyBtn *widget.Button) *fyne.Container {
+func NewTextWithCopy(label *widget.Label, copyBtn fyne.CanvasObject) *fyne.Container {
 	label.Truncation = fyne.TextTruncateOff
 	return container.NewBorder(nil, nil, nil, copyBtn, label)
 }
@@ -154,12 +238,11 @@ func LabelFromTextCell(cell *fyne.Container) *widget.Label {
 }
 
 // ButtonFromTextCell returns the copy button inside a NewTextWithCopy container.
-func ButtonFromTextCell(cell *fyne.Container) *widget.Button {
+func ButtonFromTextCell(cell *fyne.Container) *ttwidget.Button {
 	if len(cell.Objects) < 2 {
 		return nil
 	}
-	btn, _ := cell.Objects[1].(*widget.Button)
-	return btn
+	return ToolButtonFrom(cell.Objects[1])
 }
 
 // PinColumnSpacer matches the pin button width so headers align with list rows.
