@@ -9,6 +9,7 @@ import (
 
 	"github.com/jigarthacker24/git-worktree-manager/internal/gitops"
 	"github.com/jigarthacker24/git-worktree-manager/internal/ide"
+	"github.com/jigarthacker24/git-worktree-manager/internal/tasks"
 	"github.com/jigarthacker24/git-worktree-manager/internal/ui"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
@@ -37,6 +38,10 @@ type appState struct {
 	wtBaseDirField       *ui.ReadOnlyPathField
 	wtNamePrefixEntry    *widget.Entry
 	defaultEditorSelect  *ui.IconSelect
+	topContainer         *fyne.Container
+	split                *container.Split
+	taskPanel            *ui.TaskPanel
+	taskStore            *tasks.Store
 }
 
 const (
@@ -61,6 +66,15 @@ func main() {
 		window:     w,
 		selectedID: -1,
 	}
+	state.taskStore = tasks.NewStore(
+		func() string { return state.prefs.String(tasks.PrefKey) },
+		func(v string) { state.prefs.SetString(tasks.PrefKey, v) },
+	)
+	state.topContainer = container.NewMax()
+	state.taskPanel = ui.NewTaskPanel(state.taskStore, w, nil)
+	state.split = container.NewVSplit(state.topContainer, state.taskPanel)
+	state.split.SetOffset(0.72)
+	state.window.SetContent(ui.WindowContent(w, state.split))
 	state.setContent(state.welcomeView())
 	w.Show()
 	fyne.Do(func() {
@@ -70,7 +84,8 @@ func main() {
 }
 
 func (s *appState) setContent(content fyne.CanvasObject) {
-	s.window.SetContent(ui.WindowContent(s.window, content))
+	s.topContainer.Objects = []fyne.CanvasObject{content}
+	s.topContainer.Refresh()
 }
 
 func (s *appState) welcomeView() fyne.CanvasObject {
