@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/jigarthacker24/git-worktree-manager/internal/gitops"
@@ -28,7 +27,7 @@ type appState struct {
 	window     fyne.Window
 	repoPath   string
 	worktrees  []gitops.Worktree
-	branches   []string
+	branchOptions []gitops.BranchOption
 	list       *widget.List
 	colHeader  fyne.CanvasObject
 	rowMetrics ui.RowMetrics
@@ -396,13 +395,13 @@ func (s *appState) refreshSelect(selectPath string) {
 		s.setStatus("Error: " + err.Error())
 		return
 	}
-	branches, err := gitops.ListBranches(s.repoPath)
+	branchOpts, err := gitops.ListCheckoutBranches(s.repoPath)
 	if err != nil {
 		s.setStatus("Error: " + err.Error())
 		return
 	}
 	s.worktrees = s.sortWorktrees(wts)
-	s.branches = branches
+	s.branchOptions = branchOpts
 	s.rowMetrics = ui.RowMetrics{DirWidth: ui.ComputeDirWidth(s.worktrees)}
 	s.ideAvail = ide.Detect()
 	s.selectedID = -1
@@ -681,11 +680,10 @@ func (s *appState) showAddDialog() {
 	modeSelect := widget.NewSelect([]string{"Existing branch", "New branch"}, nil)
 	modeSelect.SetSelected("Existing branch")
 
-	sortedBranches := append([]string(nil), s.branches...)
-	sort.Strings(sortedBranches)
+	branchLabels := gitops.DisplayNames(s.branchOptions)
 
-	branchSelect, existingBranchPanel := branchSelectorPanel(sortedBranches, "")
-	sourceBranchSelect, sourceBranchPanel := branchSelectorPanel(sortedBranches, "develop")
+	branchSelect, existingBranchPanel := branchSelectorPanel(branchLabels, "")
+	sourceBranchSelect, sourceBranchPanel := branchSelectorPanel(branchLabels, gitops.PreferredBranchDisplay(s.branchOptions, "develop"))
 
 	newBranchEntry := widget.NewEntry()
 	newBranchEntry.SetPlaceHolder("feature/my-branch")
@@ -730,23 +728,29 @@ func (s *appState) showAddDialog() {
 		}
 
 		newBranch := modeSelect.Selected == "New branch"
-		var branch, sourceBranch string
+		spec := gitops.AddWorktreeSpec{NewBranch: newBranch}
 		if newBranch {
-			branch = strings.TrimSpace(newBranchEntry.Text)
-			sourceBranch = sourceBranchSelect.Selected
-			if branch == "" {
+			spec.NewBranchName = strings.TrimSpace(newBranchEntry.Text)
+			if spec.NewBranchName == "" {
 				dialog.ShowError(fmt.Errorf("branch name is required"), s.window)
 				return
 			}
+			source, err := gitops.BranchOptionByDisplay(s.branchOptions, sourceBranchSelect.Selected)
+			if err != nil {
+				dialog.ShowError(fmt.Errorf("select a source branch"), s.window)
+				return
+			}
+			spec.Source = source
 		} else {
-			branch = branchSelect.Selected
-			if branch == "" {
+			existing, err := gitops.BranchOptionByDisplay(s.branchOptions, branchSelect.Selected)
+			if err != nil {
 				dialog.ShowError(fmt.Errorf("select a branch"), s.window)
 				return
 			}
+			spec.Existing = existing
 		}
 
-		if err := gitops.AddWorktree(s.repoPath, abs, branch, newBranch, sourceBranch); err != nil {
+		if err := gitops.AddWorktree(s.repoPath, abs, spec); err != nil {
 			dialog.ShowError(err, s.window)
 			return
 		}

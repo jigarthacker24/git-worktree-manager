@@ -53,22 +53,29 @@ func ListBranches(repoPath string) ([]string, error) {
 	return branches, nil
 }
 
-func AddWorktree(repoPath, wtPath, branch string, newBranch bool, sourceBranch string) error {
-	args := addWorktreeArgs(wtPath, branch, newBranch, sourceBranch)
-	_, err := runGit(repoPath, args...)
-	return err
+// AddWorktreeSpec describes a worktree to create.
+type AddWorktreeSpec struct {
+	NewBranch     bool
+	NewBranchName string
+	Existing      BranchOption
+	Source        BranchOption
 }
 
-func addWorktreeArgs(wtPath, branch string, newBranch bool, sourceBranch string) []string {
-	args := []string{"worktree", "add"}
-	if newBranch {
-		args = append(args, "-b", branch, wtPath)
-		if sourceBranch != "" {
-			args = append(args, sourceBranch)
+func addWorktreeArgsFromSpec(wtPath string, spec AddWorktreeSpec) []string {
+	if spec.NewBranch {
+		args := []string{"worktree", "add", "-b", spec.NewBranchName, wtPath}
+		if ref := spec.Source.SourceRefForNewBranch(); ref != "" {
+			args = append(args, ref)
 		}
 		return args
 	}
-	return append(args, wtPath, branch)
+	return spec.Existing.WorktreeAddArgs(wtPath)
+}
+
+func AddWorktree(repoPath, wtPath string, spec AddWorktreeSpec) error {
+	args := addWorktreeArgsFromSpec(wtPath, spec)
+	_, err := runGit(repoPath, args...)
+	return err
 }
 
 func RemoveWorktree(repoPath, wtPath string, force bool) error {
