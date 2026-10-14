@@ -47,7 +47,7 @@ fyne install github.com/jigarthacker24/git-worktree-manager@latest
 `fyne install` builds from source on Linux and can fail on Ubuntu with a `_FORTIFY_SOURCE` CGO error. Use the pre-built release instead:
 
 ```bash
-VERSION=v1.0.10
+VERSION=v1.0.11
 ARCH=amd64   # use arm64 on Apple Silicon Linux / aarch64 machines
 
 curl -LO "https://github.com/jigarthacker24/git-worktree-manager/releases/download/${VERSION}/git-worktree-manager-${VERSION}-linux-${ARCH}.tar.xz"
@@ -132,8 +132,8 @@ Artifacts are collected under `dist/` (and `fyne-cross/dist/` during cross build
 Push a version tag to build packages via GitHub Actions:
 
 ```bash
-git tag v1.0.10
-git push origin v1.0.10
+git tag v1.0.11
+git push origin v1.0.11
 ```
 
 The workflow in `.github/workflows/release.yml` uploads Linux `.tar.xz` packages to the GitHub release.

@@ -685,6 +685,30 @@ func (s *appState) showAddDialog() {
 	branchSelect, existingBranchPanel := branchSelectorPanel(branchLabels, "")
 	sourceBranchSelect, sourceBranchPanel := branchSelectorPanel(branchLabels, gitops.PreferredBranchDisplay(s.branchOptions, "develop"))
 
+	sourceStatusLabel := widget.NewLabel("")
+	sourceStatusLabel.Wrapping = fyne.TextWrapWord
+	updateSourceBranchStatus := func() {
+		display := sourceBranchSelect.Selected
+		if display == "" {
+			sourceStatusLabel.SetText("")
+			return
+		}
+		opt, err := gitops.BranchOptionByDisplay(s.branchOptions, display)
+		if err != nil {
+			sourceStatusLabel.SetText("")
+			return
+		}
+		status, err := gitops.DescribeBranchSource(s.repoPath, opt)
+		if err != nil {
+			sourceStatusLabel.SetText("Could not load branch info: " + err.Error())
+			return
+		}
+		sourceStatusLabel.SetText(status.Summary())
+	}
+	sourceBranchSelect.OnChanged = func(string) {
+		updateSourceBranchStatus()
+	}
+
 	newBranchEntry := widget.NewEntry()
 	newBranchEntry.SetPlaceHolder("feature/my-branch")
 
@@ -693,13 +717,16 @@ func (s *appState) showAddDialog() {
 		newBranchEntry,
 		widget.NewLabel("Source branch"),
 		sourceBranchPanel,
+		sourceStatusLabel,
 	)
 	newBranchPanel.Hide()
+	updateSourceBranchStatus()
 
 	modeSelect.OnChanged = func(sel string) {
 		if sel == "New branch" {
 			existingBranchPanel.Hide()
 			newBranchPanel.Show()
+			updateSourceBranchStatus()
 		} else {
 			newBranchPanel.Hide()
 			existingBranchPanel.Show()
@@ -758,7 +785,7 @@ func (s *appState) showAddDialog() {
 			s.refreshSelect(abs)
 		})
 	}, s.window)
-	d.Resize(fyne.NewSize(420, 320))
+	d.Resize(fyne.NewSize(460, 380))
 	d.Show()
 }
 
