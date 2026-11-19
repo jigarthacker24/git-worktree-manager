@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jigarthacker24/git-worktree-manager/internal/gitops"
 	"github.com/jigarthacker24/git-worktree-manager/internal/ide"
@@ -50,6 +51,7 @@ const (
 	worktreeNamePrefixKey  = "worktree_name_prefix"
 	worktreePrefixInitKey      = "worktree_name_prefix_init"
 	defaultDoubleClickIDEKey   = "default_double_click_ide"
+	worktreeListSortKey        = "worktree_list_sort"
 	maxRecentPaths             = 10
 	maxPinnedWorktrees     = 5
 )
@@ -235,15 +237,25 @@ func (s *appState) mainView() fyne.CanvasObject {
 				pathLbl.Truncation = fyne.TextTruncateOff
 			}
 
-			if s.isPinned(wt.Path) {
+			if wt.Main {
+				pinBtn.SetIcon(ui.PinFilledIcon())
+				ui.SetToolTip(pinBtn, "Main repository (always on top)")
+				pinBtn.Disable()
+				pinBtn.OnTapped = nil
+			} else if s.isPinned(wt.Path) {
 				pinBtn.SetIcon(ui.PinFilledIcon())
 				ui.SetToolTip(pinBtn, "Unpin worktree")
+				pinBtn.Enable()
+				pinBtn.OnTapped = func() {
+					s.togglePin(wt.Path)
+				}
 			} else {
 				pinBtn.SetIcon(ui.PinIcon())
 				ui.SetToolTip(pinBtn, "Pin worktree")
-			}
-			pinBtn.OnTapped = func() {
-				s.togglePin(wt.Path)
+				pinBtn.Enable()
+				pinBtn.OnTapped = func() {
+					s.togglePin(wt.Path)
+				}
 			}
 
 			copyBranchBtn.OnTapped = func() {
@@ -313,6 +325,13 @@ func (s *appState) mainView() fyne.CanvasObject {
 	})
 	s.defaultEditorSelect.SetSelected(ide.LabelFromPref(s.prefs.String(defaultDoubleClickIDEKey)))
 
+	worktreeSortSelect := widget.NewSelect(gitops.WorktreeListSortLabels(), nil)
+	worktreeSortSelect.SetSelected(gitops.WorktreeListSortLabel(s.loadWorktreeListSort()))
+	worktreeSortSelect.OnChanged = func(label string) {
+		s.saveWorktreeListSort(gitops.WorktreeListSortFromLabel(label))
+		s.refresh()
+	}
+
 	baseDirField := container.NewBorder(
 		nil, nil, nil,
 		container.NewHBox(moveAllBtn, baseDirBrowse),
@@ -321,6 +340,7 @@ func (s *appState) mainView() fyne.CanvasObject {
 	settingsForm := widget.NewForm(
 		widget.NewFormItem("Default worktree directory", baseDirField),
 		widget.NewFormItem("Worktree directory name prefix", s.wtNamePrefixEntry),
+		widget.NewFormItem("Worktree list order", worktreeSortSelect),
 		widget.NewFormItem("Double-click opens in", s.defaultEditorSelect),
 	)
 	settingsContent := container.NewHBox(
@@ -522,7 +542,20 @@ func (s *appState) pinnedPaths() []string {
 	return paths
 }
 
+func (s *appState) isMainWorktree(wtPath string) bool {
+	normWT := s.normalizedPath(wtPath)
+	for _, wt := range s.worktrees {
+		if wt.Main && s.normalizedPath(wt.Path) == normWT {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *appState) isPinned(wtPath string) bool {
+	if s.isMainWorktree(wtPath) {
+		return true
+	}
 	normWT := s.normalizedPath(wtPath)
 	normRepo := s.normalizedPath(s.repoPath)
 	for _, e := range s.prefs.StringList(pinnedWorktreesKey) {
@@ -535,6 +568,9 @@ func (s *appState) isPinned(wtPath string) bool {
 }
 
 func (s *appState) togglePin(wtPath string) {
+	if s.isMainWorktree(wtPath) {
+		return
+	}
 	entries := s.prefs.StringList(pinnedWorktreesKey)
 	normWT := s.normalizedPath(wtPath)
 	normRepo := s.normalizedPath(s.repoPath)
@@ -558,30 +594,43 @@ func (s *appState) togglePin(wtPath string) {
 	s.setStatus("Pinned worktree")
 }
 
-func (s *appState) sortWorktrees(wts []gitops.Worktree) []gitops.Worktree {
-	pinned := s.pinnedPaths()
-	pinOrder := make(map[string]int, len(pinned))
-	for i, p := range pinned {
-		pinOrder[p] = i
-	}
+func (s *appState) loadWorktreeListSort() gitops.WorktreeListSort {
+	return gitops.ParseWorktreeListSort(s.prefs.String(s.repoPrefKey(worktreeListSortKey)))
+}
 
+func (s *appState) saveWorktreeListSort(sort gitops.WorktreeListSort) {
+	s.prefs.SetString(s.repoPrefKey(worktreeListSortKey), string(sort))
+}
+
+func (s *appState) sortWorktrees(wts []gitops.Worktree) []gitops.Worktree {
 	existing := make(map[string]gitops.Worktree, len(wts))
 	for _, wt := range wts {
 		existing[s.normalizedPath(wt.Path)] = wt
 	}
 
-	var sorted []gitops.Worktree
-	for _, p := range pinned {
-		if wt, ok := existing[p]; ok {
-			sorted = append(sorted, wt)
+	sortMode := s.loadWorktreeListSort()
+	var activityCache map[string]time.Time
+	if sortMode == gitops.SortWorktreesByActivity {
+		paths := gitops.PathsNeedingActivity(wts, s.pinnedPaths(), s.normalizedPath)
+		raw := gitops.ComputeWorktreeLastActivity(paths)
+		activityCache = make(map[string]time.Time, len(raw))
+		for p, t := range raw {
+			activityCache[s.normalizedPath(p)] = t
 		}
 	}
-	for _, wt := range wts {
-		if _, ok := pinOrder[s.normalizedPath(wt.Path)]; !ok {
-			sorted = append(sorted, wt)
+	activityAt := func(path string) time.Time {
+		if activityCache == nil {
+			return time.Time{}
 		}
+		return activityCache[s.normalizedPath(path)]
 	}
 
+	sorted := gitops.OrderWorktrees(wts, gitops.OrderWorktreesOptions{
+		Sort:       sortMode,
+		Pinned:     s.pinnedPaths(),
+		NormPath:   s.normalizedPath,
+		ActivityAt: activityAt,
+	})
 	s.prunePinnedPaths(existing)
 	return sorted
 }
@@ -598,9 +647,15 @@ func (s *appState) prunePinnedPaths(existing map[string]gitops.Worktree) {
 			kept = append(kept, entry)
 			continue
 		}
-		if _, ok := existing[s.normalizedPath(wtPath)]; ok {
-			kept = append(kept, s.pinEntry(wtPath))
+		normWT := s.normalizedPath(wtPath)
+		wt, ok := existing[normWT]
+		if !ok {
+			continue
 		}
+		if wt.Main {
+			continue
+		}
+		kept = append(kept, s.pinEntry(wtPath))
 	}
 	s.prefs.SetStringList(pinnedWorktreesKey, kept)
 }

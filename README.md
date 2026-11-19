@@ -7,8 +7,8 @@ Repository: [github.com/jigarthacker24/git-worktree-manager](https://github.com/
 ## Features
 
 - Open a cloned repository by path (with recent repos)
-- List worktrees: directory, branch, path
-- Pin up to 5 worktrees per repository
+- List worktrees: directory, branch, path (main repo always first; sort by directory name or last activity — git status + last commit; main and pinned worktrees skip activity checks)
+- Pin up to 5 worktrees per repository (main is always pinned and cannot be unpinned)
 - Copy branch name or worktree path
 - Open a worktree in VS Code, Cursor, or Claude Code (icons disabled when not installed)
 - Double-click a worktree row to open it in your chosen default editor
@@ -47,7 +47,7 @@ fyne install github.com/jigarthacker24/git-worktree-manager@latest
 `fyne install` builds from source on Linux and can fail on Ubuntu with a `_FORTIFY_SOURCE` CGO error. Use the pre-built release instead:
 
 ```bash
-VERSION=v1.0.11
+VERSION=v1.0.12
 ARCH=amd64   # use arm64 on Apple Silicon Linux / aarch64 machines
 
 curl -LO "https://github.com/jigarthacker24/git-worktree-manager/releases/download/${VERSION}/git-worktree-manager-${VERSION}-linux-${ARCH}.tar.xz"
@@ -132,8 +132,8 @@ Artifacts are collected under `dist/` (and `fyne-cross/dist/` during cross build
 Push a version tag to build packages via GitHub Actions:
 
 ```bash
-git tag v1.0.11
-git push origin v1.0.11
+git tag v1.0.12
+git push origin v1.0.12
 ```
 
 The workflow in `.github/workflows/release.yml` uploads Linux `.tar.xz` packages to the GitHub release.
@@ -154,6 +154,22 @@ After the repo is public and `fyne install github.com/jigarthacker24/git-worktre
 ## App metadata
 
 Packaging metadata lives in `FyneApp.toml` (name, ID, version, icon).
+
+## Benchmarks (last-activity sort)
+
+From the repo root:
+
+```bash
+go test -bench='LastActivity|ComputeWorktree|OrderWorktrees' -benchmem ./internal/gitops/
+```
+
+Against a real worktree on your machine (large repo / many dirty files):
+
+```bash
+BENCH_WORKTREE_PATH=/path/to/worktree go test -bench=BenchmarkWorktreeLastActivity_Real -benchmem ./internal/gitops/
+```
+
+`BenchmarkComputeWorktreeLastActivity/n=21` mirrors parallel activity for 21 paths; sort-only overhead is in `BenchmarkOrderWorktrees_ByActivity`.
 
 ## Project layout
 
